@@ -1,0 +1,10 @@
+services:
+  jathagam-api:
+    build: .
+    image: tamil-jathagam-api:1.1.0
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"     # keep internal; put nginx/Caddy with HTTPS in front
+    volumes:
+      - ./data:/srv/data          # ராசி பலன் drafts/approvals survive rebuilds
