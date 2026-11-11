@@ -92,6 +92,35 @@ def _next_crossing(fn, jd0: float, step_deg: float, forward_hours: float = 60.0)
     return (lo + hi) / 2
 
 
+def _prev_crossing(fn, jd0: float, step_deg: float, back_hours: float = 60.0) -> float | None:
+    """Last instant before jd0 when fn(jd) crossed into its current step (start of the current tithi etc.)."""
+    v0 = fn(jd0)
+    target = int(v0 / step_deg) * step_deg
+    lo, hi = jd0 - back_hours / 24.0, jd0
+    t, prev = hi, v0
+    while t > lo:                              # coarse backward scan for a bracket
+        t2 = max(t - 1 / 24.0, lo)
+        v = fn(t2)
+        if v > prev:                           # wrapped 0→360 going backwards
+            v -= 360.0
+        if v < target:
+            lo, hi = t2, t
+            break
+        t, prev = t2, v
+    else:
+        return None
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        vm = fn(mid)
+        if vm > v0 + 1:
+            vm -= 360.0
+        if vm >= target:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
+
+
 def _prev_sun_ingress(jd0: float) -> float:
     """Instant (before jd0) when the sidereal Sun entered its current sign."""
     s0 = _sun(jd0)
@@ -206,7 +235,12 @@ def compute_panchang(*, date: str, lat: float, lon: float, tz_id: str) -> dict:
         # --- Moon sign at sunrise (for ராசி பலன் linkage)
         moon_sign = int(_moon(rise) / 30)
 
+        from .panchang_extra import extras
+        extra = extras(rise=rise, sett=sett, next_rise=next_rise, lat=lat, lon=lon, zone=zone, day=day, weekday=weekday,
+                       sun_sign=sun_sign, moon_sign=moon_sign, tithis=tithis, naks=naks, yogas=yogas, karanas=karanas)
+
     return {
+        **extra,
         "calculation": {"engine": E.ENGINE, "ephemeris_data": E.EPHEMERIS_DATA, "ayanamsa": "lahiri",
                         "ayanamsa_ta": T.AYANAMSA_TA["lahiri"], "ayanamsa_value_dms": E.dms(ayan), "zodiac": "sidereal",
                         "day_boundary": "sunrise", "sunrise_definition": "upper limb with refraction (Swiss Ephemeris default)",

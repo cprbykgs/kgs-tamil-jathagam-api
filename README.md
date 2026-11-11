@@ -70,9 +70,13 @@ formats the date from it, so that one boundary can differ by one day.
 | Endpoint | What |
 |---|---|
 | `GET /api/v1/panchang?date=&latitude=&longitude=&tz_id=&place=` | தினசரி பஞ்சாங்கம் (defaults: today in Chennai). Tamil date, weekday, tithi/nakshatra/yoga/karana chains with end times, sunrise/sunset, Rahu/Yama/Gulikai. Cached per date+location+zone. |
-| `GET /api/v1/rasi-palan?date=` | Public: approved இன்றைய ராசி பலன்கள் (404 until approved). |
+| `GET /api/v1/rasi-palan?date=` | Public: இன்றைய ராசி பலன்கள் for the date — open, no approval step. |
 | `GET /api/v1/admin/rasi-palan?date=` (header `x-admin-token`) | Preview the draft with every rule that fired. |
-| `POST /api/v1/admin/rasi-palan/approve` `{date, approver, edits?}` | Publish (optionally with edited Tamil text per rasi). |
+| `POST /api/v1/admin/rasi-palan/approve` `{date, approver, edits?}` | Optional: save edited Tamil text per rasi (overrides the generated text). |
 | `POST /api/v1/admin/rasi-palan/unpublish` `{date}` | Take a day back to draft. |
 
 Rules live in `app/palan.py` (`FAVOURABLE` table + Tamil templates). Set `ADMIN_TOKEN` in `.env`. Drafts are saved in `data/palan/<date>.json`.
+
+### Panchangam extras (v1.2)
+`/api/v1/panchang` additionally returns: `ayanam_ta`, `paksha_ta`, `tithi_banner_ta`, `sentences_ta` (lay-man Tamil sentences for tithi/nakshatra/yoga/karana/amirthathi/chandrashtamam), `nokku_ta`, `day_nakshatra_ta`, `chandrashtamam`, `amirthathi_yogam`, `nalla_neram`, `gowri_nalla_neram` (fixed weekday table, printed-calendar convention), `soolam_ta`, `parigaram_ta`, `lagna_at_sunrise` (with remaining நாழிகை), `lagna_table`, `gochara` (sunrise transit chart + next ingress dates).
+Not provided: நேத்திரம்/ஜீவன் (published sources disagree on the rule). Sources for the fixed tables: nallaneramtoday.com (weekday நல்ல நேரம்/கௌரி), thirukanithapanchangam.com (சூலம்/பரிகாரம்), ungalvazhkkai.seithisaral.in (அமிர்தாதி யோகம்).
