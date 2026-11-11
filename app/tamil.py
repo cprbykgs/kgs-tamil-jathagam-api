@@ -13,9 +13,9 @@ SIGNS_TA = ["மேஷம்", "ரிஷபம்", "மிதுனம்", "�
 PLANETS_EN = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"]
 PLANETS_TA = {"Sun": "சூரியன்", "Moon": "சந்திரன்", "Mars": "செவ்வாய்", "Mercury": "புதன்",
               "Jupiter": "குரு", "Venus": "சுக்கிரன்", "Saturn": "சனி", "Rahu": "ராகு",
-              "Ketu": "கேது", "Ascendant": "லக்னம்"}
+              "Ketu": "கேது", "Mandi": "மாந்தி", "Ascendant": "லக்னம்"}
 PLANETS_TA_SHORT = {"Sun": "சூ", "Moon": "சந்", "Mars": "செவ்", "Mercury": "புத", "Jupiter": "குரு",
-                    "Venus": "சுக்", "Saturn": "சனி", "Rahu": "ரா", "Ketu": "கே", "Ascendant": "லக்"}
+                    "Venus": "சுக்", "Saturn": "சனி", "Rahu": "ரா", "Ketu": "கே", "Mandi": "மா", "Ascendant": "லக்"}
 
 NAKSHATRAS_EN = ["Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
                  "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta",

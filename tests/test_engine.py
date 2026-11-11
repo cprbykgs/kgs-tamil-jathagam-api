@@ -33,6 +33,8 @@ def test_planets_match_tp_reference():
     r = trad()
     assert r["ascendant"]["longitude_dms"] == TP_REFERENCE["Ascendant"]
     for p in r["planets"]:
+        if p.get("is_upagraha"):
+            continue
         assert p["longitude_dms"] == TP_REFERENCE[p["planet"]], p["planet"]
         assert (p["nakshatra_ta"], p["pada"]) == TP_NAK[p["planet"]], p["planet"]
     assert r["planets"][2]["retrograde"] and r["planets"][6]["retrograde"]     # Mars, Saturn retrograde that day
@@ -107,7 +109,7 @@ def test_midnight_and_overseas():
     r = engine.compute_chart(name="x", date="2000-01-01", time="00:00:00", tz_id="America/Los_Angeles",
                              lat=34.05, lon=-118.24, mode="traditional", as_of=AS_OF)
     assert r["birth"]["utc_datetime"].startswith("2000-01-01T08:00:00")
-    assert 1 <= r["ascendant"]["house"] <= 12 and len(r["planets"]) == 9
+    assert 1 <= r["ascendant"]["house"] <= 12 and len(r["planets"]) == 10
 
 
 def test_boundaries_sign_nakshatra_pada_navamsa():
@@ -138,6 +140,8 @@ def test_kp_against_vedicastro():
     vp = {p.Object: p for p in h.get_planets_data_from_chart(ch)}
     vh = {x.Object: x for x in h.get_houses_data_from_chart(ch)}
     for p in k["planets"]:
+        if p.get("is_upagraha"):
+            continue
         v = vp[p["planet"]]
         assert abs(p["longitude"] - v.LonDecDeg) < 0.002 and p["house"] == v.HouseNr
         assert (p["star_lord"], p["sub_lord"], p["sub_sub_lord"]) == (v.NakshatraLord, v.SubLord, v.SubSubLord)
@@ -152,3 +156,17 @@ def test_place_search():
     assert hits and hits[0]["name"] == "Chennai" and hits[0]["tz_id"] == "Asia/Kolkata"
     assert places.search("சென்னை")[0]["name"] == "Chennai"
     assert places.timezone_for(13.08, 80.27) == "Asia/Kolkata"
+
+
+def test_mandi_sivamayam_shortcut():
+    """மாந்தி = naazhigai x 6 + Sun (+180 at night). Night birth on Vedic Sunday (before sunrise) -> 10 naazhigai.
+    Reference: an independent Tamil astrology app shows மாந்தி 121°40'35" (மகம் 1) for this birth at 03:15."""
+    r = engine.compute_chart(name="t", date="1995-12-18", time="03:15:00", tz_id="Asia/Kolkata", lat=8.7674, lon=78.1342)
+    m = r["mandi"]
+    assert m["longitude_dms"] == "121°40'35\"" and (m["nakshatra_ta"], m["pada"]) == ("மகம்", 1)
+    assert m["mandi_birth_period"] == "night" and m["mandi_naazhigai"] == 10 and m["house"] == 11
+    assert r["planets"][-1]["planet"] == "Mandi" and r["planets"][-1]["planet_ta_short"] == "மா"
+    # day birth: Wednesday noon Chennai -> 14 naazhigai, Sun + 84
+    d = engine.compute_chart(name="t", date="2026-11-11", time="12:00:00", tz_id="Asia/Kolkata", lat=13.08, lon=80.27)
+    sun = next(p for p in d["planets"] if p["planet"] == "Sun")
+    assert d["mandi"]["mandi_naazhigai"] == 14 and abs((d["mandi"]["longitude"] - sun["longitude"]) % 360 - 84) < 1e-9

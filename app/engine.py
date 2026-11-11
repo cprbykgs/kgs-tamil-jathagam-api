@@ -22,7 +22,7 @@ import swisseph as swe
 
 from . import tamil as T
 
-CALC_VERSION = "1.0.0"
+CALC_VERSION = "1.3.0"
 ENGINE = f"Swiss Ephemeris {swe.version} via pyswisseph"
 EPHE_DIR = os.environ.get("EPHE_DIR", os.path.join(os.path.dirname(__file__), "..", "ephe"))
 DASHA_YEAR_DAYS = 365.25          # documented Vimshottari year length
@@ -205,7 +205,9 @@ def _planet_record(name: str, lon: float, retro: bool, house: int, mode: str) ->
         "pada": pada, "nakshatra_lord": NAK_LORDS[nk % 9], "nakshatra_lord_ta": T.PLANETS_TA_SHORT[NAK_LORDS[nk % 9]],
         "retrograde": retro, "house": house,
     }
-    if name != "Ascendant":
+    if name == "Mandi":
+        rec["dignity"], rec["dignity_ta"], rec["is_upagraha"] = "-", "-", True
+    elif name != "Ascendant":
         dg = dignity(name, lon)
         rec["dignity"] = dg
         rec["dignity_ta"] = T.DIGNITY_TA[dg]
@@ -292,6 +294,38 @@ def _vimshottari(moon_lon: float, birth_local: dt.datetime, as_of: dt.datetime) 
             "as_of": as_of.isoformat(), "current": current, "maha_dashas": mahas}
 
 
+
+# ----------------------------------------------------------------------------- மாந்தி (Mandi)
+# Tamil short-cut method (sivamayam, "மாந்தி கணிதம்"): Mandi rises a fixed number of
+# naazhigai after sunrise (day birth) or sunset (night birth), by Vedic weekday;
+# Mandi longitude = naazhigai x 6 + Sun (day)  /  naazhigai x 6 + Sun + 180 (night).
+MANDI_DAY_NAAZHIGAI = {6: 26, 0: 22, 1: 18, 2: 14, 3: 10, 4: 6, 5: 2}    # weekday (Mon=0) -> naazhigai
+MANDI_NIGHT_NAAZHIGAI = {6: 10, 0: 6, 1: 2, 2: 26, 3: 22, 4: 18, 5: 14}
+
+
+def _vedic_day(jd_ut: float, local: dt.datetime, lat: float, lon: float) -> dict:
+    """Sunrise preceding the birth instant, the following sunset, Vedic weekday (Mon=0), day/night."""
+    off = local.utcoffset().total_seconds() / 86400
+    day0 = swe.julday(local.year, local.month, local.day, 0) - off
+    rise = swe.rise_trans(day0 - 1, swe.SUN, swe.CALC_RISE, (lon, lat, 0), flags=EPH_FLAG)[1][0]
+    while True:
+        nxt = swe.rise_trans(rise + 0.5, swe.SUN, swe.CALC_RISE, (lon, lat, 0), flags=EPH_FLAG)[1][0]
+        if nxt > jd_ut:
+            break
+        rise = nxt
+    sset = swe.rise_trans(rise, swe.SUN, swe.CALC_SET, (lon, lat, 0), flags=EPH_FLAG)[1][0]
+    y, m, d, h = swe.revjul(rise + off)
+    return {"rise": rise, "set": sset, "weekday": dt.date(y, m, d).weekday(), "is_day": jd_ut < sset,
+            "sunrise_local": (dt.datetime(y, m, d) + dt.timedelta(hours=h)).strftime("%H:%M:%S")}
+
+
+def _mandi(sun_lon: float, vday: dict) -> dict:
+    wd, is_day = vday["weekday"], vday["is_day"]
+    ng = (MANDI_DAY_NAAZHIGAI if is_day else MANDI_NIGHT_NAAZHIGAI)[wd]
+    lon_ = norm(ng * 6 + sun_lon + (0 if is_day else 180))
+    return {"lon": lon_, "naazhigai": ng, "is_day": is_day, "weekday_ta": T.WEEKDAYS_TA[wd]}
+
+
 def _panchang(sun: float, moon: float, local: dt.datetime, lat: float, lon: float, jd_ut: float) -> dict:
     """Weekday (sunrise-based), tithi, karana, nitya yoga, Moon nakshatra."""
     elong = norm(moon - sun)
@@ -303,18 +337,10 @@ def _panchang(sun: float, moon: float, local: dt.datetime, lat: float, lon: floa
     mov = ["Bava", "Balava", "Kaulava", "Taitila", "Garija", "Vanija", "Vishti"]
     karana = "Kimstughna" if k == 0 else "Shakuni" if k == 57 else "Chatushpada" if k == 58 else "Naga" if k == 59 else mov[(k - 1) % 7]
     yoga_i = int(norm(sun + moon) / NAK_SPAN)
-    # Vedic weekday starts at sunrise: find the sunrise preceding the birth instant
+    # Vedic weekday starts at sunrise
     try:
-        day0 = swe.julday(local.year, local.month, local.day, 0) - local.utcoffset().total_seconds() / 86400
-        rise = swe.rise_trans(day0 - 1, swe.SUN, swe.CALC_RISE, (lon, lat, 0), flags=EPH_FLAG)[1][0]
-        while True:
-            nxt = swe.rise_trans(rise + 0.5, swe.SUN, swe.CALC_RISE, (lon, lat, 0), flags=EPH_FLAG)[1][0]
-            if nxt > jd_ut:
-                break
-            rise = nxt
-        y, m, d, h = swe.revjul(rise + local.utcoffset().total_seconds() / 86400)
-        wd = dt.date(y, m, d).weekday()
-        sunrise_local = (dt.datetime(y, m, d) + dt.timedelta(hours=h)).strftime("%H:%M:%S")
+        vd = _vedic_day(jd_ut, local, lat, lon)
+        wd, sunrise_local = vd["weekday"], vd["sunrise_local"]
     except Exception:
         wd, sunrise_local = local.weekday(), None
     mn, mp = nakshatra_of(moon)
@@ -355,6 +381,17 @@ def compute_chart(*, name: str, date: str, time: str, tz_id: str, lat: float, lo
         v = pos[p]
         h = (sign_index(v["lon"]) - lagna_sign) % 12 + 1 if mode == "traditional" else _house_by_cusps(v["lon"], cusps)
         planets.append(_planet_record(p, v["lon"], v["retrograde"], h, mode))
+    # மாந்தி — shown with the planets, never used in dasha / KP significators
+    try:
+        vday = _vedic_day(jd, bt["local"], lat, lon)
+    except Exception:  # polar edge cases: fall back to civil day, 06:00-18:00
+        vday = {"weekday": local.weekday(), "is_day": 6 <= local.hour < 18}
+    md = _mandi(pos["Sun"]["lon"], vday)
+    mh = (sign_index(md["lon"]) - lagna_sign) % 12 + 1 if mode == "traditional" else _house_by_cusps(md["lon"], cusps)
+    mandi_rec = _planet_record("Mandi", md["lon"], False, mh, mode)
+    mandi_rec.update({"mandi_naazhigai": md["naazhigai"], "mandi_birth_period": "day" if md["is_day"] else "night",
+                      "mandi_birth_period_ta": "பகல்" if md["is_day"] else "இரவு", "mandi_weekday_ta": md["weekday_ta"]})
+    planets.append(mandi_rec)
     asc_rec = _planet_record("Ascendant", asc, False, 1, mode)
 
     nav = [{"planet": p["planet"], "planet_ta_short": p["planet_ta_short"], "longitude": navamsa_lon(p["longitude"]),
@@ -371,6 +408,8 @@ def compute_chart(*, name: str, date: str, time: str, tz_id: str, lat: float, lo
             "house_system": house_system, "house_system_ta": T.HOUSE_SYSTEM_TA[house_system],
             "node": node, "node_ta": "மத்திம ராகு (Mean Node)" if node == "mean" else "உண்மை ராகு (True Node)",
             "dasha_year_days": DASHA_YEAR_DAYS, "zodiac": "sidereal",
+            "mandi_method": "Tamil short-cut (sivamayam): naazhigai x 6 + Sun (day), naazhigai x 6 + Sun + 180 (night)",
+            "mandi_method_ta": "மாந்தி: நாழிகை × 6 + சூரிய ஸ்புடம் (இரவு + 180°)",
         },
         "birth": {
             "name": name, "gender": gender, "date": date, "time": time, "tz_id": tz_id,
@@ -381,6 +420,7 @@ def compute_chart(*, name: str, date: str, time: str, tz_id: str, lat: float, lo
         },
         "ascendant": asc_rec,
         "planets": planets,
+        "mandi": mandi_rec,
         "navamsa": {"ascendant_sign_index": sign_index(nav_asc), "ascendant_sign_ta": T.SIGNS_TA[sign_index(nav_asc)],
                     "ascendant_longitude": nav_asc, "planets": nav},
         "transit": {"as_of": as_of_dt.isoformat(),
@@ -398,7 +438,7 @@ def compute_chart(*, name: str, date: str, time: str, tz_id: str, lat: float, lo
             r.pop("dignity", None); r.pop("dignity_ta", None)
             cusp_recs.append(r)
         # Significators — explicit KP ABCD rules
-        occupants = {h: [p["planet"] for p in planets if p["house"] == h] for h in range(1, 13)}
+        occupants = {h: [p["planet"] for p in planets if p["house"] == h and not p.get("is_upagraha")] for h in range(1, 13)}
         owners = {h: [cusp_recs[h - 1]["sign_lord"]] for h in range(1, 13)}
         star_of = {p["planet"]: p["star_lord"] for p in planets}
         house_of = {p["planet"]: p["house"] for p in planets}
